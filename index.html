@@ -41,7 +41,6 @@ input[type=range]{width:90px}
 <div id="mmNote"></div>
 <button class="mb off" id="skinBtn"><span>🎨</span>Скины</button>
 </div></div>
-<script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);
@@ -428,7 +427,7 @@ rain(){rn^=1;toast(rn?'🌧 Начался дождь — включи двор�
 
 
 function startGame(){try{document.documentElement.requestFullscreen().then(()=>screen.orientation.lock('landscape')).catch(()=>{})}catch(e){}audio();$('start').style.display='none';toast('Тяни мышью или пальцем — осмотрись. Нажимай на окна, кнопки и экран!')}
-const mmNote=t=>{const n=$('mmNote');n.textContent=t;clearTimeout(mmNote.t);mmNote.t=setTimeout(()=>n.textContent='',2500)};
+const mmNote=(t,ms)=>{const n=$('mmNote');n.textContent=t;clearTimeout(mmNote.t);mmNote.t=setTimeout(()=>n.textContent='',ms||2500)};
 $('mSolo').onclick=startGame;
 $('mMulti').onclick=()=>showMp(1);$('mBack').onclick=()=>showMp(0);
 function showMp(v){$('mMain').style.display=v?'none':'flex';$('mpP').style.display=v?'flex':'none';$('skinBtn').style.display=v?'none':'flex'}
@@ -443,7 +442,7 @@ const mp={on:0,host:0,seat:0,conn:null,conns:{},av:{},code:''},net={kmh:0,lat:0,
 const GUEST=()=>mp.on&&!mp.host,HOMES=[[-.38,1.08,.32],[.38,1.08,.32],[-.5,1.15,1.1],[.5,1.15,1.1]],HC=[0xff8a5c,0x5cc8ff,0x8aff7a,0xffd84a];
 const EYE=new THREE.MeshBasicMaterial({color:0xffffff}),CODES='ABCDEFGHJKLMNPQRSTUVWXYZ23456789',toast0=toast;
 toast=s=>{toast0(s);if(mp.on&&mp.host)bc({t:'toast',s})};
-const bc=(m,ex)=>{for(const k in mp.conns)if(+k!==ex&&mp.conns[k].open)mp.conns[k].send(m)};
+const bc=(m,ex)=>{if(mp.ws&&mp.ws.readyState===1&&Object.keys(mp.conns).length)mp.ws.send(JSON.stringify({to:'*',ex:ex||0,d:m}))};
 function updRoom(){const n=1+Object.keys(mp.conns).length;$('rm').style.display='flex';$('rm').textContent=mp.host?'👥 Комната '+mp.code+' · '+n+'/4 · нажми, чтобы поделиться':'👥 Комната '+mp.code+' · место '+(mp.seat+1)}
 $('rm').onclick=()=>{if(!mp.host)return;const u=location.href.split('#')[0]+'#'+mp.code,t='Залетай в «Тихую поездку»! Код комнаты: '+mp.code;if(navigator.share)navigator.share({text:t,url:u}).catch(()=>{});else if(navigator.clipboard){navigator.clipboard.writeText(t+' '+u);toast0('Ссылка скопирована')}};
 function seg(m,a,b){const d=b.clone().sub(a),l=d.length()||.001;m.position.copy(a).addScaledVector(d,.5);m.quaternion.setFromUnitVectors(up,d.normalize());m.scale.y=l}
@@ -477,25 +476,39 @@ function mpFrame(dt){
     if(lt2&&m.k===1){const d=lt2.clone().sub(sh0),pt=sh0.clone().addScaledVector(d.normalize(),Math.min(lt2.distanceTo(sh0),.62));hand.lerp(pt,r);el.lerp(sh0.clone().add(pt).multiplyScalar(.5).add(new THREE.Vector3(.1,-.1,0)),r)}
     seg(m.u,sh0,el);seg(m.f,el,hand);m.h.position.copy(hand)}}}}
 /* хозяин */
-const ICE={config:{iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun:stun1.l.google.com:19302'},{urls:'stun:global.stun.twilio.com:3478'},{urls:['turn:openrelay.metered.ca:80','turn:openrelay.metered.ca:443','turn:openrelay.metered.ca:443?transport=tcp'],username:'openrelayproject',credential:'openrelayproject'}]},debug:1};
-function mkRoom(){if(typeof Peer==='undefined'){mmNote('Нет интернета для мультиплеера');return}
- const code=Array.from({length:4},()=>CODES[Math.random()*CODES.length|0]).join(''),p=new Peer('tp-'+code,ICE);
- p.on('error',e=>{if(e.type==='unavailable-id'){p.destroy();mkRoom()}else mmNote('Ошибка сети: '+e.type)});
- const ht=setTimeout(()=>{if(!mp.on)mmNote('Сервер PeerJS (0.peerjs.com) недоступен — комнату создать не получится')},10000);
- p.on('open',()=>{clearTimeout(ht);mp.on=1;mp.host=1;mp.seat=0;mp.code=code;cat.position.x=0;updRoom();startGame();toast0('👥 Код комнаты: '+code+' — нажми на плашку сверху, чтобы поделиться')});
- p.on('connection',c=>{c.on('open',()=>{let s=0;for(let i=1;i<4;i++)if(!mp.conns[i]){s=i;break}
-   if(!s){c.send({t:'full'});setTimeout(()=>c.close(),300);return}
-   mp.conns[s]=c;c.send({t:'hi',seat:s,code});ensureAv(s);updRoom();toast0('👋 Друг сел на место '+(s+1))});
-  c.on('data',m=>{const s=+Object.keys(mp.conns).find(k=>mp.conns[k]===c);if(!s)return;
-   if(m.t==='p'){const q=pose[s]||(pose[s]={y:m.y,p:m.p});q.ty=m.y;q.tp=m.p}
-   else if(m.t==='a'&&typeof acts[m.a]==='function'){acts[m.a]();tapFx(s,m.p);bc({t:'tap',s,p:m.p},s)}});
-  c.on('close',()=>{const s=+Object.keys(mp.conns).find(k=>mp.conns[k]===c);if(s){delete mp.conns[s];dropAv(s);updRoom();toast0('Друг вышел')}})})}
+const RELAY='wss://quiet-ride-relay.user0722110323.workers.dev';
+const wsUrl=(code,r)=>RELAY+'/room/'+code+'?r='+r;
+/* хозяин */
+function mkRoom(tries){tries=tries||0;
+ if(RELAY.includes('ЗАМЕНИ')){mmNote('Не указан адрес сервера (RELAY в index.html)',8000);return}
+ const code=Array.from({length:4},()=>CODES[Math.random()*CODES.length|0]).join('');let ws,ok=0;
+ try{ws=new WebSocket(wsUrl(code,'h'))}catch(e){mmNote('Ошибка: '+e.message,8000);return}
+ const ht=setTimeout(()=>{if(!ok){try{ws.close()}catch(e){}mmNote('Сервер не отвечает. Проверь адрес RELAY или интернет',8000)}},10000);
+ ws.onerror=()=>{if(!ok){clearTimeout(ht);mmNote('Сервер недоступен',8000)}};
+ ws.onclose=()=>{if(ok&&mp.on&&mp.host){toast0('Связь с сервером потеряна');setTimeout(()=>location.reload(),2000)}};
+ ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}
+  if(m.sys==='hello'){ok=1;clearTimeout(ht);mp.on=1;mp.host=1;mp.seat=0;mp.code=code;mp.ws=ws;cat.position.x=0;updRoom();startGame();toast0('👥 Код комнаты: '+code+' — нажми на плашку сверху, чтобы поделиться');return}
+  if(m.sys==='taken'){clearTimeout(ht);if(tries<5)mkRoom(tries+1);else mmNote('Не удалось создать комнату, попробуй ещё раз',8000);return}
+  if(m.sys==='join'){const s=m.seat,c={get open(){return ws.readyState===1},send:d=>{if(ws.readyState===1)ws.send(JSON.stringify({to:s,d}))}};
+   mp.conns[s]=c;c.send({t:'hi',seat:s,code});ensureAv(s);updRoom();toast0('👋 Друг сел на место '+(s+1));return}
+  if(m.sys==='leave'){const s=m.seat;if(mp.conns[s]){delete mp.conns[s];dropAv(s);delete pose[s];updRoom();toast0('Друг вышел')}return}
+  if(m.from&&m.d){const s=m.from,d=m.d;if(!mp.conns[s])return;
+   if(d.t==='p'){const q=pose[s]||(pose[s]={y:d.y,p:d.p});q.ty=d.y;q.tp=d.p}
+   else if(d.t==='a'&&typeof acts[d.a]==='function'){acts[d.a]();tapFx(s,d.p);bc({t:'tap',s,p:d.p},s)}}}}
 /* гость */
-function joinRoom(code){if(typeof Peer==='undefined'){mmNote('Нет интернета для мультиплеера');return}
- mmNote('Подключаемся…');const p=new Peer(undefined,ICE);let tmo=setTimeout(()=>{if(!mp.on){mmNote(p.open?'Этап 2 не прошёл: сервер найден, но прямой канал не поднялся (нужен рабочий TURN)':'Этап 1 не прошёл: сервер PeerJS (0.peerjs.com) недоступен');try{p.destroy()}catch(e){}}},15000);
- p.on('error',e=>{clearTimeout(tmo);mmNote(e.type==='peer-unavailable'?'Комната не найдена':'Ошибка сети: '+e.type)});
- p.on('open',()=>{mmNote('Этап 1 ок: сервер доступен. Ищем комнату…');const c=p.connect('tp-'+code,{reliable:true});mp.conn=c;mp.code=code;setTimeout(()=>{const pc=c.peerConnection;if(pc)pc.addEventListener('iceconnectionstatechange',()=>{if(!mp.on)mmNote('Этап 2: ICE '+pc.iceConnectionState)})},300);c.on('error',e=>mmNote('Ошибка соединения: '+(e.type||e)));c.on('open',()=>{clearTimeout(tmo)});c.on('data',onG);
-  c.on('close',()=>{if(mp.on){toast0('Хозяин закрыл комнату');setTimeout(()=>location.reload(),1500)}})})}
+function joinRoom(code){
+ if(RELAY.includes('ЗАМЕНИ')){mmNote('Не указан адрес сервера (RELAY в index.html)',8000);return}
+ mmNote('Подключаемся…',12000);let ws,got=0;
+ try{ws=new WebSocket(wsUrl(code,'g'))}catch(e){mmNote('Ошибка: '+e.message,8000);return}
+ const tmo=setTimeout(()=>{if(!got){try{ws.close()}catch(e){}mmNote('Сервер не отвечает. Проверь интернет',8000)}},12000);
+ mp.conn={get open(){return ws.readyState===1},send:d=>{if(ws.readyState===1)ws.send(JSON.stringify(d))},close:()=>ws.close()};
+ ws.onerror=()=>{if(!got){clearTimeout(tmo);mmNote('Сервер недоступен',8000)}};
+ ws.onclose=()=>{if(mp.on&&!mp.host){toast0('Хозяин закрыл комнату');setTimeout(()=>location.reload(),1500)}};
+ ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}got=1;clearTimeout(tmo);
+  if(m.sys==='nohost'){mmNote('Комната не найдена',5000);return}
+  if(m.sys==='full'){mmNote('В комнате нет мест',5000);return}
+  if(m.sys==='hostleft')return;
+  if(m.d)onG(m.d)}}
 function onG(m){
  if(m.t==='full'){mmNote('В комнате нет мест');return}
  if(m.t==='hi'){mp.on=1;mp.host=0;mp.seat=m.seat;HOME.set(...HOMES[m.seat]);cat.position.x=0;$('bd').style.display='none';$('bl').style.display='none';ensureAv(m.seat);updRoom();startGame();return}
