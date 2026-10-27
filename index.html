@@ -481,7 +481,8 @@ const ICE={config:{iceServers:[{urls:'stun:stun.l.google.com:19302'},{urls:'stun
 function mkRoom(){if(typeof Peer==='undefined'){mmNote('Нет интернета для мультиплеера');return}
  const code=Array.from({length:4},()=>CODES[Math.random()*CODES.length|0]).join(''),p=new Peer('tp-'+code,ICE);
  p.on('error',e=>{if(e.type==='unavailable-id'){p.destroy();mkRoom()}else mmNote('Ошибка сети: '+e.type)});
- p.on('open',()=>{mp.on=1;mp.host=1;mp.seat=0;mp.code=code;cat.position.x=0;updRoom();startGame();toast0('👥 Код комнаты: '+code+' — нажми на плашку сверху, чтобы поделиться')});
+ const ht=setTimeout(()=>{if(!mp.on)mmNote('Сервер PeerJS (0.peerjs.com) недоступен — комнату создать не получится')},10000);
+ p.on('open',()=>{clearTimeout(ht);mp.on=1;mp.host=1;mp.seat=0;mp.code=code;cat.position.x=0;updRoom();startGame();toast0('👥 Код комнаты: '+code+' — нажми на плашку сверху, чтобы поделиться')});
  p.on('connection',c=>{c.on('open',()=>{let s=0;for(let i=1;i<4;i++)if(!mp.conns[i]){s=i;break}
    if(!s){c.send({t:'full'});setTimeout(()=>c.close(),300);return}
    mp.conns[s]=c;c.send({t:'hi',seat:s,code});ensureAv(s);updRoom();toast0('👋 Друг сел на место '+(s+1))});
@@ -491,9 +492,9 @@ function mkRoom(){if(typeof Peer==='undefined'){mmNote('Нет интернет�
   c.on('close',()=>{const s=+Object.keys(mp.conns).find(k=>mp.conns[k]===c);if(s){delete mp.conns[s];dropAv(s);updRoom();toast0('Друг вышел')}})})}
 /* гость */
 function joinRoom(code){if(typeof Peer==='undefined'){mmNote('Нет интернета для мультиплеера');return}
- mmNote('Подключаемся…');const p=new Peer(undefined,ICE);let tmo=setTimeout(()=>{if(!mp.on){mmNote('Не удалось соединиться (нет прямого канала). Попробуй без VPN или другую сеть');try{p.destroy()}catch(e){}}},15000);
+ mmNote('Подключаемся…');const p=new Peer(undefined,ICE);let tmo=setTimeout(()=>{if(!mp.on){mmNote(p.open?'Этап 2 не прошёл: сервер найден, но прямой канал не поднялся (нужен рабочий TURN)':'Этап 1 не прошёл: сервер PeerJS (0.peerjs.com) недоступен');try{p.destroy()}catch(e){}}},15000);
  p.on('error',e=>{clearTimeout(tmo);mmNote(e.type==='peer-unavailable'?'Комната не найдена':'Ошибка сети: '+e.type)});
- p.on('open',()=>{const c=p.connect('tp-'+code,{reliable:true});mp.conn=c;mp.code=code;c.on('error',e=>mmNote('Ошибка соединения: '+(e.type||e)));c.on('open',()=>{clearTimeout(tmo)});c.on('data',onG);
+ p.on('open',()=>{mmNote('Этап 1 ок: сервер доступен. Ищем комнату…');const c=p.connect('tp-'+code,{reliable:true});mp.conn=c;mp.code=code;setTimeout(()=>{const pc=c.peerConnection;if(pc)pc.addEventListener('iceconnectionstatechange',()=>{if(!mp.on)mmNote('Этап 2: ICE '+pc.iceConnectionState)})},300);c.on('error',e=>mmNote('Ошибка соединения: '+(e.type||e)));c.on('open',()=>{clearTimeout(tmo)});c.on('data',onG);
   c.on('close',()=>{if(mp.on){toast0('Хозяин закрыл комнату');setTimeout(()=>location.reload(),1500)}})})}
 function onG(m){
  if(m.t==='full'){mmNote('В комнате нет мест');return}
